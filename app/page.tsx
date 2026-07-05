@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import dynamic from "next/dynamic";
 import { Plus, ThermometerSun, Layers, Flame, User, LogOut, Lock, Check, X, ShieldAlert, ClipboardList, Shield, ShieldCheck, Search, Navigation } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,81 @@ import {
 // Dynamically import the map to avoid SSR issues with Leaflet
 const Map = dynamic(() => import("@/components/Map"), { ssr: false });
 const LocationPickerMap = dynamic(() => import("@/components/LocationPickerMap"), { ssr: false });
+
+function ExpandableItem({ icon: Icon, iconContent, content, onClick, bgClass, textClass, borderClass = "border border-gray-100", hoverWidth = 150 }: any) {
+  const [isHovered, setIsHovered] = useState(false);
+  const [isTouchExpanded, setIsTouchExpanded] = useState(false);
+  const containerRef = useRef<any>(null);
+  const justExpandedRef = useRef(false);
+  
+  useEffect(() => {
+    function handleClickOutside(event: any) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsTouchExpanded(false);
+      }
+    }
+    document.addEventListener("touchstart", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleToggle = () => {
+    setIsTouchExpanded(!isTouchExpanded);
+  };
+  
+  const Component: any = onClick ? motion.button : motion.div;
+  const isExpanded = isHovered || isTouchExpanded;
+  
+  return (
+    <Component
+      ref={containerRef}
+      onHoverStart={() => {
+        if (typeof window !== "undefined" && window.matchMedia("(hover: hover)").matches) {
+          setIsHovered(true);
+        }
+      }}
+      onHoverEnd={() => setIsHovered(false)}
+      onPointerDown={() => {
+        if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches) {
+           if (!isTouchExpanded) {
+              setIsTouchExpanded(true);
+              justExpandedRef.current = true;
+              setTimeout(() => { justExpandedRef.current = false; }, 400);
+           }
+        }
+      }}
+      onClick={(e: any) => {
+        if (typeof window !== "undefined" && window.matchMedia("(hover: none)").matches) {
+           if (justExpandedRef.current || !isTouchExpanded) {
+              e.preventDefault();
+              return;
+           }
+        }
+        if (onClick) onClick(e);
+        else handleToggle();
+      }}
+      animate={{ width: isExpanded ? hoverWidth : 48 }}
+      initial={{ width: 48 }}
+      transition={{ type: "spring", stiffness: 400, damping: 25 }}
+      className={`relative h-12 rounded-full shadow-xl flex items-center justify-start p-0 overflow-hidden pointer-events-auto shrink-0 ${bgClass} ${borderClass} ${textClass}`}
+    >
+      <div className="w-12 h-12 shrink-0 flex items-center justify-center relative z-10">
+        {Icon ? <Icon className="w-5 h-5" /> : iconContent}
+      </div>
+      <motion.div 
+        animate={{ opacity: isExpanded ? 1 : 0 }}
+        initial={{ opacity: 0 }}
+        transition={{ duration: 0.2 }}
+        className="whitespace-nowrap pr-4 flex flex-col justify-center absolute left-12 h-full z-0"
+      >
+        {content}
+      </motion.div>
+    </Component>
+  );
+}
 
 export default function Home() {
   const [heatmapEnabled, setHeatmapEnabled] = useState(false);
@@ -79,14 +155,19 @@ export default function Home() {
   const [addSpaceError, setAddSpaceError] = useState<string | null>(null);
 
   // Analysis Form State
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisStep, setAnalysisStep] = useState(1);
+  const [analysisImages, setAnalysisImages] = useState<string[]>([]);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState(false);
+  const [analysisQuestions, setAnalysisQuestions] = useState<string[]>([]);
+  const [analysisAnswers, setAnalysisAnswers] = useState<string[]>([]);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<{ baseline: number; effective: number; diff: number } | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<{ baseline: number; effective: number; diff: number; report: string } | null>(null);
 
-  // Environment Form Fields
-  const [hasSun, setHasSun] = useState(false);
-  const [hasPlants, setHasPlants] = useState(false);
-  const [hasAC, setHasAC] = useState(false);
+  // Temperature State
+  const [temperatureData, setTemperatureData] = useState<{ standard: number | null; effective: number | null }>({ standard: null, effective: null });
+  const [temperatureType, setTemperatureType] = useState<"effective" | "standard">("effective");
+  const [isTemperatureModalOpen, setIsTemperatureModalOpen] = useState(false);
 
   // Load spaces and session on mount
   useEffect(() => {
@@ -111,6 +192,32 @@ export default function Home() {
       }
     }
     initUserAndSpaces();
+  }, []);
+
+  // Fetch temperature on mount
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUserLocation({ lat, lng });
+          try {
+            const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lng}&current=temperature_2m,apparent_temperature`);
+            const data = await res.json();
+            if (data?.current) {
+              setTemperatureData({
+                standard: data.current.temperature_2m ?? null,
+                effective: data.current.apparent_temperature ?? null
+              });
+            }
+          } catch (err) {
+            console.error("Failed to fetch temperature", err);
+          }
+        },
+        (err) => console.warn("Location error", err)
+      );
+    }
   }, []);
 
   // Fetch access requests when user logs in/out or updates
@@ -256,19 +363,92 @@ export default function Home() {
     }
   };
 
-  const handleAnalyse = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsAnalyzing(true);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    
+    if (analysisImages.length + files.length > 4) {
+      setAnalysisError("You can only upload a maximum of 4 images.");
+      return;
+    }
+    
+    setAnalysisError(null);
+    
+    Array.from(files).forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAnalysisImages(prev => [...prev, reader.result as string].slice(0, 4));
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleNextStep1 = async () => {
+    if (analysisImages.length === 0) {
+      setAnalysisError("Please add at least one image.");
+      return;
+    }
+    
+    setIsGeneratingQuestions(true);
     setAnalysisError(null);
     try {
-      const mockFile = new File([""], "placeholder.jpg", { type: "image/jpeg" });
-      const result = await analyzeEnvironment(mockFile, hasSun, hasPlants, hasAC);
-      setAnalysisResult(result);
-    } catch (err) {
-      setAnalysisError("AI Analysis failed. Please try again.");
+      const res = await fetch("/api/gemini/analyse-images", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: analysisImages })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      setAnalysisQuestions(data.questions);
+      setAnalysisAnswers(new Array(data.questions.length).fill(""));
+      setAnalysisStep(2);
+    } catch (err: any) {
+      setAnalysisError(err.message || "Failed to generate questions. Please try again.");
     } finally {
-      setIsAnalyzing(false);
+      setIsGeneratingQuestions(false);
     }
+  };
+
+  const handleNextStep2 = async () => {
+    if (analysisAnswers.some(a => !a.trim())) {
+      setAnalysisError("Please answer all questions.");
+      return;
+    }
+    
+    setIsGeneratingReport(true);
+    setAnalysisError(null);
+    try {
+      const answersData = analysisQuestions.map((q, i) => ({
+        question: q,
+        answer: analysisAnswers[i]
+      }));
+      
+      const res = await fetch("/api/gemini/final-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ images: analysisImages, answers: answersData })
+      });
+      
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      
+      setAnalysisResult(data.result);
+      setAnalysisStep(3);
+    } catch (err: any) {
+      setAnalysisError(err.message || "Failed to generate report. Please try again.");
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  };
+
+  const resetAnalysis = () => {
+    setAnalysisStep(1);
+    setAnalysisImages([]);
+    setAnalysisQuestions([]);
+    setAnalysisAnswers([]);
+    setAnalysisResult(null);
+    setAnalysisError(null);
   };
 
   // Distance helper
@@ -302,10 +482,10 @@ export default function Home() {
   return (
     <main className="w-full h-screen relative flex flex-col font-sans overflow-hidden">
       {/* Header overlay for branding & Profile */}
-      <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 z-10 pointer-events-none flex flex-col sm:flex-row justify-between items-stretch sm:items-start gap-3">
-        <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-xl border border-gray-100 pointer-events-auto flex items-center justify-between sm:justify-start gap-4 shrink-0">
+      <div className="absolute top-0 left-0 right-0 p-3 sm:p-4 z-10 pointer-events-none flex justify-between items-start gap-3">
+        <div className="bg-white/95 backdrop-blur-sm p-3 rounded-xl shadow-xl border border-gray-100 pointer-events-auto flex items-center justify-between w-full">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-md">
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center shadow-md shrink-0">
               <ThermometerSun className="text-white w-4 h-4 animate-pulse" />
             </div>
             <div>
@@ -313,73 +493,105 @@ export default function Home() {
               <p className="text-[10px] sm:text-[11px] text-gray-500 font-bold uppercase tracking-wider mt-1">Heat Wave Refuge Network</p>
             </div>
           </div>
+          {temperatureData[temperatureType] !== null && (
+            <div 
+              className="flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-opacity"
+              onClick={() => setIsTemperatureModalOpen(true)}
+            >
+              <span className="text-[8px] font-bold text-gray-400 tracking-wider mb-0.5 leading-none">
+                {temperatureType === "effective" ? "EFFECTIVE" : "STANDARD"}
+              </span>
+              <span className="text-sm font-bold text-orange-500 bg-orange-50 px-3 py-1 rounded-full border border-orange-100 shadow-sm flex items-center gap-1.5 leading-none">
+                <ThermometerSun className="w-4 h-4" />
+                {Math.round(temperatureData[temperatureType]!)}°C
+              </span>
+              <span className="text-[8px] font-bold text-gray-400 tracking-wider mt-0.5 leading-none">
+                TEMPERATURE
+              </span>
+            </div>
+          )}
         </div>
+      </div>
 
-        {/* User Session Control / Dashboards */}
-        <div className="flex flex-col items-stretch sm:items-end gap-2 sm:gap-3 pointer-events-auto">
-          {currentUser ? (
-            <div className="flex items-center justify-between sm:justify-end gap-2 bg-white/95 backdrop-blur-sm p-2 rounded-full shadow-lg border border-gray-100">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 sm:w-8 sm:h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700 font-bold text-xs sm:text-sm">
-                  {currentUser.name.charAt(0).toUpperCase()}
-                </div>
-                <div className="hidden sm:block text-left px-1">
-                  <p className="text-xs font-bold text-gray-800 leading-none">{currentUser.name}</p>
-                  <p className="text-[10px] text-gray-500 capitalize">{currentUser.role} Account</p>
-                </div>
-              </div>
+      {/* Action Buttons & Session (Right Sidebar) */}
+      <div className="absolute top-24 right-3 sm:right-4 z-10 pointer-events-none flex flex-col items-end gap-2">
+        {currentUser ? (
+            <div className="flex flex-col items-end gap-2 pointer-events-auto">
+              <ExpandableItem 
+                iconContent={
+                  <div className="w-12 h-12 flex items-center justify-center bg-blue-100 text-blue-700 font-bold text-sm rounded-full">
+                    {currentUser.name.charAt(0).toUpperCase()}
+                  </div>
+                }
+                content={
+                  <>
+                    <p className="text-xs font-bold text-gray-800 leading-none">{currentUser.name}</p>
+                    <p className="text-[10px] text-gray-500 capitalize">{currentUser.role} Account</p>
+                  </>
+                }
+                bgClass="bg-white/95 backdrop-blur-sm"
+                textClass="text-gray-800"
+                hoverWidth={180}
+              />
               
-              <div className="flex items-center">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => {
-                    setDashboardTab(currentUser.role === "host" ? "incoming_requests" : "my_requests");
-                    setIsDashboardOpen(true);
-                  }}
-                  className="text-[11px] sm:text-xs flex items-center gap-1 hover:bg-gray-100 text-gray-700 font-semibold rounded-full px-2"
-                >
-                  <ClipboardList className="w-4 h-4 text-blue-600" />
-                  Dashboard
-                </Button>
+              <ExpandableItem
+                icon={ClipboardList}
+                label="Dashboard"
+                content={<span className="text-sm font-bold">Dashboard</span>}
+                onClick={() => {
+                  setDashboardTab(currentUser.role === "host" ? "incoming_requests" : "my_requests");
+                  setIsDashboardOpen(true);
+                }}
+                bgClass="bg-white hover:bg-gray-50"
+                textClass="text-gray-700"
+                hoverWidth={140}
+              />
 
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={handleSignOut} 
-                  className="rounded-full text-red-500 hover:text-red-600 hover:bg-red-50 h-7 w-7 sm:h-8 sm:w-8"
-                  title="Sign Out"
-                >
-                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                </Button>
-              </div>
+              <ExpandableItem
+                icon={LogOut}
+                label="Sign Out"
+                content={<span className="text-sm font-bold">Sign Out</span>}
+                onClick={handleSignOut}
+                bgClass="bg-white hover:bg-red-50"
+                textClass="text-red-500 hover:text-red-600"
+                hoverWidth={120}
+              />
             </div>
           ) : (
-            <Button 
-              onClick={() => {
-                setAuthMode("login");
-                setIsAuthOpen(true);
-              }}
-              size="default"
-              className="shadow-md rounded-full bg-slate-900 hover:bg-slate-800 text-white font-bold flex items-center justify-center gap-1 px-5 border border-slate-700 w-full sm:w-auto"
-            >
-              <User className="w-4 h-4" />
-              Sign In / Sign Up
-            </Button>
+            <div className="pointer-events-auto">
+              <ExpandableItem
+                icon={User}
+                label="Sign In / Sign Up"
+                content={<span className="text-sm font-bold">Sign In / Sign Up</span>}
+                onClick={() => {
+                  setAuthMode("login");
+                  setIsAuthOpen(true);
+                }}
+                bgClass="bg-slate-900 hover:bg-slate-800"
+                textClass="text-white"
+                borderClass="border border-slate-700"
+                hoverWidth={180}
+              />
+            </div>
           )}
 
           {/* Action Buttons */}
-          <div className="flex gap-2 w-full sm:w-auto">
-            <Button 
+          <div className="flex flex-col items-end gap-2 pointer-events-auto mt-2">
+            <ExpandableItem
+              icon={Plus}
+              label="Add a space"
+              content={<span className="text-sm font-bold">Add a space</span>}
               onClick={() => setIsAddSpaceOpen(true)}
-              size="default" 
-              className="flex-1 sm:flex-none shadow-lg rounded-full px-4 sm:px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold flex items-center justify-center gap-1.5 text-xs sm:text-sm"
-            >
-              <Plus className="w-4 h-4" />
-              Add
-            </Button>
+              bgClass="bg-blue-600 hover:bg-blue-700"
+              textClass="text-white"
+              borderClass="border border-blue-700"
+              hoverWidth={150}
+            />
 
-            <Button 
+            <ExpandableItem
+              icon={Search}
+              label="Find a space"
+              content={<span className="text-sm font-bold">Find a space</span>}
               onClick={() => {
                 setIsFindOpen(true);
                 if ("geolocation" in navigator) {
@@ -389,26 +601,24 @@ export default function Home() {
                   );
                 }
               }}
-              variant="outline"
-              size="default" 
-              className="flex-1 sm:flex-none shadow-lg rounded-full px-4 sm:px-5 bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 font-bold flex items-center justify-center gap-1.5 text-xs sm:text-sm"
-            >
-              <Search className="w-4 h-4" />
-              Find
-            </Button>
+              bgClass="bg-white hover:bg-gray-50"
+              textClass="text-gray-900"
+              borderClass="border-2 border-gray-200"
+              hoverWidth={150}
+            />
             
-            <Button 
+            <ExpandableItem
+              icon={ThermometerSun}
+              label="Analyse my space"
+              content={<span className="text-sm font-bold">Analyse my space</span>}
               onClick={() => setIsAnalyseOpen(true)}
-              variant="secondary"
-              size="default" 
-              className="flex-1 sm:flex-none shadow-lg rounded-full px-4 sm:px-5 bg-white hover:bg-gray-50 text-blue-700 border-2 border-blue-100 font-bold flex items-center justify-center gap-1.5 text-xs sm:text-sm"
-            >
-              <ThermometerSun className="w-4 h-4" />
-              Analyse
-            </Button>
+              bgClass="bg-white hover:bg-gray-50"
+              textClass="text-blue-700"
+              borderClass="border-2 border-blue-100"
+              hoverWidth={180}
+            />
           </div>
         </div>
-      </div>
 
       {/* Bottom controls */}
       <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10 pointer-events-none w-full flex justify-center px-4">
@@ -839,56 +1049,111 @@ export default function Home() {
       {/* Analyse Space Dialog */}
       <Dialog open={isAnalyseOpen} onOpenChange={(open) => {
         setIsAnalyseOpen(open);
-        if (!open) setAnalysisResult(null);
+        if (!open) resetAnalysis();
       }}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] overflow-y-auto max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>Analyse My Space</DialogTitle>
             <DialogDescription>
-              Upload a photo and answer a few questions. Our AI will estimate the effective cooling drop.
+              Follow the steps to estimate the effective cooling drop.
             </DialogDescription>
           </DialogHeader>
+          
+          <div className="flex items-center justify-between mb-6 px-4 relative">
+            <div className="absolute top-1/2 left-8 right-8 h-0.5 bg-gray-200 -z-10 -translate-y-1/2"></div>
+            {[1, 2, 3].map(step => (
+              <div key={step} className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${analysisStep >= step ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                {step}
+              </div>
+            ))}
+          </div>
 
-          {!analysisResult ? (
-            <form onSubmit={handleAnalyse} className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="photo">Upload Photo</Label>
-                <Input id="photo" type="file" accept="image/*" />
+          {analysisStep === 1 && (
+            <div className="grid gap-4 py-4 animate-in slide-in-from-right-4">
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="flex-1 border-2 border-dashed border-gray-300 rounded-xl p-6 flex flex-col items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer relative overflow-hidden">
+                  <Input id="photo" type="file" accept="image/*" multiple onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                  <ThermometerSun className="w-8 h-8 text-blue-500 mb-2" />
+                  <span className="font-semibold text-sm">Upload Image(s)</span>
+                  <span className="text-xs text-gray-500">Max 4 images</span>
+                </div>
+                <div className="flex-1 border-2 border-dashed border-gray-300 rounded-xl p-6 flex flex-col items-center justify-center hover:bg-gray-50 transition-colors cursor-pointer relative overflow-hidden">
+                  <Input id="camera" type="file" accept="image/*" capture="environment" multiple onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                  <Flame className="w-8 h-8 text-orange-500 mb-2" />
+                  <span className="font-semibold text-sm">Click Image(s)</span>
+                  <span className="text-xs text-gray-500">Use camera</span>
+                </div>
               </div>
               
-              <div className="grid gap-4 mt-2 bg-gray-50 p-4 rounded-md border border-gray-200">
-                <h4 className="font-medium text-sm">Environment Questionnaire</h4>
-                
-                <div className="flex items-center space-x-2">
-                  <Switch id="q-sun" checked={hasSun} onCheckedChange={setHasSun} />
-                  <Label htmlFor="q-sun">Is there direct sunlight?</Label>
+              {analysisImages.length > 0 && (
+                <div className="flex gap-2 overflow-x-auto pb-2 mt-4">
+                  {analysisImages.map((img, idx) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <div key={idx} className="relative shrink-0">
+                      <img src={img} alt={`Upload ${idx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                      <button onClick={() => setAnalysisImages(prev => prev.filter((_, i) => i !== idx))} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 shadow hover:bg-red-600 z-20">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Switch id="q-plants" checked={hasPlants} onCheckedChange={setHasPlants} />
-                  <Label htmlFor="q-plants">Are there trees or plants nearby?</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Switch id="q-ac" checked={hasAC} onCheckedChange={setHasAC} />
-                  <Label htmlFor="q-ac">Is Air Conditioning active?</Label>
-                </div>
-              </div>
+              )}
 
               {analysisError && <div className="text-sm text-red-500 font-medium mt-2">{analysisError}</div>}
 
               <DialogFooter className="mt-4">
-                <Button type="submit" disabled={isAnalyzing} className="w-full">
-                  {isAnalyzing ? "Analyzing Environment..." : "Run AI Analysis"}
+                <Button onClick={handleNextStep1} disabled={isGeneratingQuestions || analysisImages.length === 0} className="w-full">
+                  {isGeneratingQuestions ? "Generating Questions..." : "Next Step"}
                 </Button>
               </DialogFooter>
-            </form>
-          ) : (
+            </div>
+          )}
+
+          {analysisStep === 2 && (
+            <div className="grid gap-6 py-4 animate-in slide-in-from-right-4">
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                <h4 className="font-bold text-blue-900 mb-4 flex items-center gap-2">
+                  <ThermometerSun className="w-5 h-5 text-blue-600" /> 
+                  Environment Questionnaire
+                </h4>
+                <div className="space-y-4">
+                  {analysisQuestions.map((q, idx) => (
+                    <div key={idx} className="space-y-2">
+                      <Label className="font-medium text-gray-800 text-sm leading-tight">{q}</Label>
+                      <Input 
+                        value={analysisAnswers[idx]} 
+                        onChange={e => {
+                          const newAnswers = [...analysisAnswers];
+                          newAnswers[idx] = e.target.value;
+                          setAnalysisAnswers(newAnswers);
+                        }} 
+                        placeholder="Your answer..."
+                        className="bg-white"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {analysisError && <div className="text-sm text-red-500 font-medium">{analysisError}</div>}
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setAnalysisStep(1)}>Back</Button>
+                <Button onClick={handleNextStep2} disabled={isGeneratingReport} className="flex-1">
+                  {isGeneratingReport ? "Analyzing..." : "Generate Report"}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {analysisStep === 3 && analysisResult && (
             <div className="py-6 animate-in zoom-in-95">
               <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6 text-center">
-                <h3 className="text-xl font-bold text-blue-900 mb-2">Analysis Complete</h3>
+                <h3 className="text-xl font-bold text-blue-900 mb-2">Final Analysis Report</h3>
                 
                 <div className="flex justify-center items-center gap-8 my-6">
                   <div className="text-center">
-                    <p className="text-sm text-gray-500 font-medium mb-1">Baseline Temp</p>
+                    <p className="text-sm text-gray-500 font-medium mb-1">Baseline</p>
                     <div className="text-3xl font-bold text-gray-900 flex items-center justify-center gap-1">
                       {analysisResult.baseline}°<Flame className="w-5 h-5 text-orange-500" />
                     </div>
@@ -897,20 +1162,25 @@ export default function Home() {
                   <div className="text-3xl text-blue-300">→</div>
                   
                   <div className="text-center">
-                    <p className="text-sm text-blue-600 font-medium mb-1">Effective Temp</p>
+                    <p className="text-sm text-blue-600 font-medium mb-1">Effective</p>
                     <div className="text-4xl font-black text-blue-600 flex items-center justify-center gap-1">
                       {analysisResult.effective}°
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white/60 rounded-lg p-3 text-sm text-blue-800 font-medium">
-                  AI estimates a cooling effect of <span className="font-bold">{Math.abs(analysisResult.diff)}°F</span> compared to ambient temperature.
+                <div className="bg-white/60 rounded-lg p-4 text-sm text-gray-800 font-medium text-left leading-relaxed">
+                  {analysisResult.report}
+                  <div className="mt-3 text-center text-blue-800 font-bold">
+                    Estimated cooling effect: {Math.abs(analysisResult.diff)}°F
+                  </div>
                 </div>
               </div>
-              <Button onClick={() => setIsAnalyseOpen(false)} className="w-full mt-4">
-                Done
-              </Button>
+              <DialogFooter className="mt-4">
+                <Button onClick={() => setIsAnalyseOpen(false)} className="w-full">
+                  Done
+                </Button>
+              </DialogFooter>
             </div>
           )}
         </DialogContent>
@@ -1022,6 +1292,57 @@ export default function Home() {
             </div>
           </div>
         )}
+        
+      {/* Temperature Modal */}
+      {isTemperatureModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/40 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl p-6 sm:p-8 shadow-2xl w-full max-w-md border border-gray-100 flex flex-col items-center">
+            <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">Select Temperature Metric</h2>
+            
+            <div className="flex flex-col gap-4 w-full">
+              <div 
+                className={`flex justify-between items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${temperatureType === "effective" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"}`}
+                onClick={() => {
+                  setTemperatureType("effective");
+                  setIsTemperatureModalOpen(false);
+                }}
+              >
+                <div>
+                  <h3 className="font-bold text-gray-900">Effective Temperature</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Feels like temperature (Apparent)</p>
+                </div>
+                {temperatureData.effective !== null && (
+                  <span className="font-bold text-xl text-orange-500">{Math.round(temperatureData.effective)}°C</span>
+                )}
+              </div>
+
+              <div 
+                className={`flex justify-between items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${temperatureType === "standard" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"}`}
+                onClick={() => {
+                  setTemperatureType("standard");
+                  setIsTemperatureModalOpen(false);
+                }}
+              >
+                <div>
+                  <h3 className="font-bold text-gray-900">Standard Temperature</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Measured air temperature</p>
+                </div>
+                {temperatureData.standard !== null && (
+                  <span className="font-bold text-xl text-orange-500">{Math.round(temperatureData.standard)}°C</span>
+                )}
+              </div>
+            </div>
+
+            <Button 
+              variant="outline" 
+              className="mt-6 w-full rounded-xl font-bold"
+              onClick={() => setIsTemperatureModalOpen(false)}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
