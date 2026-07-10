@@ -20,7 +20,8 @@
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { Send, Eye, ThermometerSun, Layers } from "lucide-react";
-import { io, Socket } from "socket.io-client";
+import { supabase } from "@/lib/supabase";
+import { RealtimeChannel } from "@supabase/supabase-js";
 
 type Size = "sm" | "md" | "lg";
 type Mood = "hot" | "cool" | "neutral";
@@ -77,7 +78,7 @@ export function AnonymousLiveChat({ userLocation }: { userLocation?: { lat: numb
 
   const idRef = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const channelRef = useRef<RealtimeChannel | null>(null);
 
   const dockRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -126,19 +127,19 @@ export function AnonymousLiveChat({ userLocation }: { userLocation?: { lat: numb
     ? `city-${Math.round(userLocation.lat * 10)}-${Math.round(userLocation.lng * 10)}`
     : 'global';
 
-  // Connect to Socket.IO and handle live messages
+  // Connect to Supabase Realtime and handle live messages
   useEffect(() => {
-    const socket = io({ path: "/api/socketio" });
-    socketRef.current = socket;
+    const channel = supabase.channel(cityId);
+    channelRef.current = channel;
     
-    socket.emit("join-city", cityId);
-    
-    socket.on("message", (data: { text: string; cityId: string }) => {
-      spawnBubble(data.text);
-    });
+    channel
+      .on('broadcast', { event: 'message' }, (payload) => {
+        spawnBubble(payload.payload.text);
+      })
+      .subscribe();
     
     return () => {
-      socket.disconnect();
+      supabase.removeChannel(channel);
     };
   }, [cityId, spawnBubble]);
 
@@ -150,8 +151,12 @@ export function AnonymousLiveChat({ userLocation }: { userLocation?: { lat: numb
     spawnBubble(trimmed);
     
     // Broadcast via socket
-    if (socketRef.current) {
-      socketRef.current.emit("message", { text: trimmed, cityId });
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'message',
+        payload: { text: trimmed }
+      });
     }
     
     setInputValue("");
@@ -160,8 +165,12 @@ export function AnonymousLiveChat({ userLocation }: { userLocation?: { lat: numb
 
   const handleQuickEmoji = (emoji: string) => {
     spawnBubble(emoji);
-    if (socketRef.current) {
-      socketRef.current.emit("message", { text: emoji, cityId });
+    if (channelRef.current) {
+      channelRef.current.send({
+        type: 'broadcast',
+        event: 'message',
+        payload: { text: emoji }
+      });
     }
   };
 

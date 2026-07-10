@@ -150,7 +150,9 @@ export default function Home() {
   const [newName, setNewName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newRules, setNewRules] = useState("");
+  const [tempMode, setTempMode] = useState<"maintained" | "cooldown">("maintained");
   const [newMaintainedTemp, setNewMaintainedTemp] = useState("");
+  const [newCooldownFactor, setNewCooldownFactor] = useState("");
   const [newMaintainedTempUnit, setNewMaintainedTempUnit] = useState<"C" | "F">("C");
   const [newImages, setNewImages] = useState<string[]>([]);
   const [imageUrlInput, setImageUrlInput] = useState("");
@@ -360,7 +362,8 @@ export default function Home() {
         host_id: currentUser?.id,
         image_url: newImages[0] || undefined,
         images: newImages,
-        maintained_temp: newMaintainedTemp ? Number(newMaintainedTemp) : undefined,
+        maintained_temp: (tempMode === 'maintained' && newMaintainedTemp) ? Number(newMaintainedTemp) : undefined,
+        cooldown_factor: (tempMode === 'cooldown' && newCooldownFactor) ? Number(newCooldownFactor) : undefined,
         maintained_temp_unit: newMaintainedTempUnit
       });
       setSpaces((prev) => [...prev, added as Space]);
@@ -370,7 +373,9 @@ export default function Home() {
       setNewName("");
       setNewDescription("");
       setNewRules("");
+      setTempMode("maintained");
       setNewMaintainedTemp("");
+      setNewCooldownFactor("");
       setNewMaintainedTempUnit("C");
       setNewImages([]);
       setImageUrlInput("");
@@ -935,50 +940,131 @@ export default function Home() {
               />
             </div>
 
-            {/* Maintained Temperature */}
-            <div className="grid gap-2">
-              <Label htmlFor="maintained-temp">Maintained Temperature</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="maintained-temp"
-                  type="number"
-                  step="0.1"
-                  placeholder="e.g. 21"
-                  value={newMaintainedTemp}
-                  onChange={(e) => setNewMaintainedTemp(e.target.value)}
-                  className="flex-1"
-                />
-                <div className="flex bg-slate-100 rounded-lg p-1 border select-none shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (newMaintainedTempUnit === "F") {
-                        setNewMaintainedTempUnit("C");
-                        if (newMaintainedTemp) {
-                          setNewMaintainedTemp((Math.round(((Number(newMaintainedTemp) - 32) * 5 / 9) * 10) / 10).toString());
-                        }
-                      }
-                    }}
-                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${newMaintainedTempUnit === "C" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
-                  >
-                    °C
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (newMaintainedTempUnit === "C") {
-                        setNewMaintainedTempUnit("F");
-                        if (newMaintainedTemp) {
-                          setNewMaintainedTemp((Math.round(((Number(newMaintainedTemp) * 9 / 5) + 32) * 10) / 10).toString());
-                        }
-                      }
-                    }}
-                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${newMaintainedTempUnit === "F" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
-                  >
-                    °F
-                  </button>
-                </div>
+            {/* Temperature & Cooldown Options */}
+            <div className="grid gap-3">
+              <Label>Temperature Control</Label>
+              <div className="flex bg-slate-100 rounded-lg p-1 border select-none w-full mb-2">
+                <button
+                  type="button"
+                  onClick={() => setTempMode("maintained")}
+                  className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${tempMode === "maintained" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                >
+                  Maintained Temp
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTempMode("cooldown")}
+                  className={`flex-1 px-3 py-1.5 text-xs font-bold rounded-md transition-all ${tempMode === "cooldown" ? "bg-white text-indigo-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                >
+                  Cooldown Factor
+                </button>
               </div>
+
+              {tempMode === "maintained" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="maintained-temp" className="text-xs text-gray-500 font-normal">Closed space maintained temperature</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="maintained-temp"
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 21"
+                      value={newMaintainedTemp}
+                      onChange={(e) => setNewMaintainedTemp(e.target.value)}
+                      className="flex-1"
+                    />
+                    <div className="flex bg-slate-100 rounded-lg p-1 border select-none shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newMaintainedTempUnit === "F") {
+                            setNewMaintainedTempUnit("C");
+                            if (newMaintainedTemp) {
+                              setNewMaintainedTemp((Math.round(((Number(newMaintainedTemp) - 32) * 5 / 9) * 10) / 10).toString());
+                            }
+                            if (newCooldownFactor) {
+                              setNewCooldownFactor((Math.round((Number(newCooldownFactor) * 5 / 9) * 10) / 10).toString());
+                            }
+                          }
+                        }}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${newMaintainedTempUnit === "C" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                      >
+                        °C
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newMaintainedTempUnit === "C") {
+                            setNewMaintainedTempUnit("F");
+                            if (newMaintainedTemp) {
+                              setNewMaintainedTemp((Math.round(((Number(newMaintainedTemp) * 9 / 5) + 32) * 10) / 10).toString());
+                            }
+                            if (newCooldownFactor) {
+                              setNewCooldownFactor((Math.round((Number(newCooldownFactor) * 9 / 5) * 10) / 10).toString());
+                            }
+                          }
+                        }}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${newMaintainedTempUnit === "F" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                      >
+                        °F
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {tempMode === "cooldown" && (
+                <div className="grid gap-2">
+                  <Label htmlFor="cooldown-factor" className="text-xs text-gray-500 font-normal">Open space temp reduction (e.g. 5 degrees cooler)</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="cooldown-factor"
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g. 5"
+                      value={newCooldownFactor}
+                      onChange={(e) => setNewCooldownFactor(e.target.value)}
+                      className="flex-1"
+                    />
+                    <div className="flex bg-slate-100 rounded-lg p-1 border select-none shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newMaintainedTempUnit === "F") {
+                            setNewMaintainedTempUnit("C");
+                            if (newMaintainedTemp) {
+                              setNewMaintainedTemp((Math.round(((Number(newMaintainedTemp) - 32) * 5 / 9) * 10) / 10).toString());
+                            }
+                            if (newCooldownFactor) {
+                              setNewCooldownFactor((Math.round((Number(newCooldownFactor) * 5 / 9) * 10) / 10).toString());
+                            }
+                          }
+                        }}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${newMaintainedTempUnit === "C" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                      >
+                        °C
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newMaintainedTempUnit === "C") {
+                            setNewMaintainedTempUnit("F");
+                            if (newMaintainedTemp) {
+                              setNewMaintainedTemp((Math.round(((Number(newMaintainedTemp) * 9 / 5) + 32) * 10) / 10).toString());
+                            }
+                            if (newCooldownFactor) {
+                              setNewCooldownFactor((Math.round((Number(newCooldownFactor) * 9 / 5) * 10) / 10).toString());
+                            }
+                          }
+                        }}
+                        className={`px-3 py-1 text-xs font-bold rounded-md transition-all ${newMaintainedTempUnit === "F" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-800"}`}
+                      >
+                        °F
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Photos of the Space */}

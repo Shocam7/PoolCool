@@ -20,6 +20,7 @@ export interface Space {
   images?: string[];
   maintained_temp?: number;
   maintained_temp_unit?: "C" | "F";
+  cooldown_factor?: number;
 }
 
 export interface AccessRequest {

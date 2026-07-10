@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node server.js",
+    "dev": "next dev",
     "build": "NODE_ENV=production next build",
-    "start": "node server.js",
+    "start": "next start",
     "lint": "eslint .",
     "clean": "next clean"
   },
@@ -28,8 +28,6 @@
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "react-leaflet": "^5.0.0",
-    "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {

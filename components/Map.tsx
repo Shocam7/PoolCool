@@ -18,6 +18,17 @@ const convertTemp = (temp: number, from: "C" | "F", to: "C" | "F") => {
   return temp;
 };
 
+const convertDeltaTemp = (temp: number, from: "C" | "F", to: "C" | "F") => {
+  if (from === to) return temp;
+  if (from === "C" && to === "F") {
+    return Math.round((temp * 9 / 5) * 10) / 10;
+  }
+  if (from === "F" && to === "C") {
+    return Math.round((temp * 5 / 9) * 10) / 10;
+  }
+  return temp;
+};
+
 // Custom HTML Marker using Lucide Snowflake
 const createCustomIcon = (isPrivate: boolean) => {
   const pinColorHex = isPrivate ? "#a855f7" : "#3b82f6";
@@ -198,9 +209,14 @@ function SpaceMarker({
     : (space.image_url ? [space.image_url] : []);
 
   const hasMaintainedTemp = space.maintained_temp !== undefined && space.maintained_temp !== null;
+  const hasCooldownFactor = space.cooldown_factor !== undefined && space.cooldown_factor !== null;
   
   const displayTemp = hasMaintainedTemp
     ? convertTemp(space.maintained_temp!, space.maintained_temp_unit || "C", tempUnit)
+    : null;
+
+  const displayCooldown = hasCooldownFactor
+    ? convertDeltaTemp(space.cooldown_factor!, space.maintained_temp_unit || "C", tempUnit)
     : null;
 
   const handleToggleUnit = (e: React.MouseEvent) => {
@@ -284,18 +300,20 @@ function SpaceMarker({
 
             {/* Maintained At Temperature (Click to interconvert) */}
             <div className="grid grid-cols-1 gap-1 mb-3">
-              {hasMaintainedTemp && (
+              {(hasMaintainedTemp || hasCooldownFactor) && (
                 <div 
                   onClick={handleToggleUnit}
-                  className="flex items-center justify-between bg-blue-50/70 hover:bg-blue-50 border border-blue-100 p-2 rounded cursor-pointer transition-colors"
+                  className={`flex items-center justify-between ${hasCooldownFactor ? 'bg-indigo-50/70 hover:bg-indigo-50 border-indigo-100' : 'bg-blue-50/70 hover:bg-blue-50 border-blue-100'} border p-2 rounded cursor-pointer transition-colors`}
                   title="Click to convert Celsius/Fahrenheit"
                 >
                   <div className="flex items-center gap-1.5">
-                    <Thermometer className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                    <span className="text-[11px] font-bold text-blue-950">Maintained at:</span>
+                    <Thermometer className={`w-3.5 h-3.5 ${hasCooldownFactor ? 'text-indigo-500' : 'text-blue-500'} shrink-0`} />
+                    <span className={`text-[11px] font-bold ${hasCooldownFactor ? 'text-indigo-950' : 'text-blue-950'}`}>
+                      {hasCooldownFactor ? 'Cooldown Factor:' : 'Maintained at:'}
+                    </span>
                   </div>
-                  <span className="text-[11px] font-black text-blue-600 bg-white px-2 py-0.5 rounded border border-blue-200">
-                    {displayTemp}°{tempUnit}
+                  <span className={`text-[11px] font-black ${hasCooldownFactor ? 'text-indigo-600 border-indigo-200' : 'text-blue-600 border-blue-200'} bg-white px-2 py-0.5 rounded border`}>
+                    {hasCooldownFactor ? `-${displayCooldown}°${tempUnit}` : `${displayTemp}°${tempUnit}`}
                   </span>
                 </div>
               )}

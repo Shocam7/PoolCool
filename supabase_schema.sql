@@ -25,6 +25,7 @@ CREATE TABLE public.spaces (
   images text[],
   maintained_temp double precision,
   maintained_temp_unit text,
+  cooldown_factor double precision,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
