@@ -14,6 +14,7 @@ CREATE TABLE public.spaces (
   id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
   name text NOT NULL,
   description text,
+  rules text,
   lat double precision NOT NULL,
   lng double precision NOT NULL,
   is_private boolean DEFAULT false,
@@ -21,6 +22,9 @@ CREATE TABLE public.spaces (
   effective_temp integer,
   is_ai_analyzed boolean DEFAULT false,
   image_url text,
+  images text[],
+  maintained_temp double precision,
+  maintained_temp_unit text,
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

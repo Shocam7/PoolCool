@@ -9,6 +9,7 @@ export interface Space {
   id: string;
   name: string;
   description: string;
+  rules?: string;
   lat: number;
   lng: number;
   is_private: boolean;
@@ -16,6 +17,9 @@ export interface Space {
   effective_temp?: number;
   is_ai_analyzed: boolean;
   image_url?: string;
+  images?: string[];
+  maintained_temp?: number;
+  maintained_temp_unit?: "C" | "F";
 }
 
 export interface AccessRequest {
@@ -40,33 +44,55 @@ export const MOCK_SPACES: Space[] = [
     id: "1",
     name: "Downtown Library",
     description: "Quiet, air-conditioned public library with seating.",
+    rules: "No loud talking, keep food inside the cafeteria, respect quiet hours.",
     lat: 34.0522,
     lng: -118.2437,
     is_private: false,
     effective_temp: 72,
     is_ai_analyzed: true,
     image_url: "https://picsum.photos/seed/library/400/300",
+    images: [
+      "https://picsum.photos/seed/library/400/300",
+      "https://picsum.photos/seed/library2/400/300"
+    ],
+    maintained_temp: 21,
+    maintained_temp_unit: "C",
   },
   {
     id: "2",
     name: "Shaded Community Park",
     description: "Lots of trees, good breeze, water fountain available.",
+    rules: "Keep pets on leash, do not litter, park closes at sundown.",
     lat: 34.0562,
     lng: -118.2507,
     is_private: false,
     effective_temp: 78,
     is_ai_analyzed: false,
+    image_url: "https://picsum.photos/seed/park/400/300",
+    images: [
+      "https://picsum.photos/seed/park/400/300",
+      "https://picsum.photos/seed/park2/400/300"
+    ],
+    maintained_temp: 25,
+    maintained_temp_unit: "C",
   },
   {
     id: "3",
     name: "Alex's Pool & Patio",
     description: "Willing to host a few folks during the heatwave. Cold drinks provided.",
+    rules: "Must call or request access in advance, bring your own towel.",
     lat: 34.0452,
     lng: -118.2387,
     is_private: true,
     effective_temp: 70,
     is_ai_analyzed: true,
     image_url: "https://picsum.photos/seed/pool/400/300",
+    images: [
+      "https://picsum.photos/seed/pool/400/300",
+      "https://picsum.photos/seed/pool2/400/300"
+    ],
+    maintained_temp: 68,
+    maintained_temp_unit: "F",
   },
 ];
 
